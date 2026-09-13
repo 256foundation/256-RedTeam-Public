@@ -369,10 +369,48 @@ intercept nearly anything:
 
 A **full miner** (hashboards + PSU) hashes, heats, and risks; a **bare control board**
 (same board, no hashboards/PSU connected) draws a few watts and is completely safe to
-leave powered unattended. Almost the entire *control-plane* attack surface — web UI,
-auth, APIs, OTA/update paths, network protocols, boot/partition layout — is fully
-exercisable on a bare board. We run both: bare boards for breadth, a few full miners for
-thermal/fan/PSU/skimming work, with the full-miner PSU feeds on Shelly channels (§2).
+leave powered unattended. In our experience the majority of red-team work never needs
+hashboards at all — and you can parallelize a bare-board bench across vendors and
+firmware versions at a fraction of the cost, power, and risk of a rack of live miners.
+
+**Bare control board is enough for (most of the backlog):**
+
+- **Firmware work**: acquiring and unpacking images, binwalk/Ghidra analysis, bootloader
+  and partition-layout exploration, UART/recovery boot, flash dumps. This is offline or
+  board-local — nothing here cares whether hashboards exist.
+- **Management-plane testing**: web UI, authentication, API/CGI endpoints, privilege
+  boundaries, config backup/restore, factory-reset behavior, persistence checks.
+- **OTA and update paths**: the fetch side, manifest/signature validation, downgrade
+  behavior — intercepted at the router (§5.3). Several vendors' update chains fail to
+  verify signatures; you find that on a bare board.
+- **Network behavior**: DHCP/DNS/NTP handling, egress telemetry and hardcoded
+  phone-home endpoints, port scans of the board's own listeners.
+- **Pool/Stratum protocol work**: the control board runs the mining protocol — you can
+  capture and fuzz subscribe/authorize handshakes against a hostile pool with no hashing
+  hardware attached. (Caveat: firmware with zero hashrates attached may skip or error
+  parts of the mining pipeline, and you get no share-submission traffic — see below.)
+
+**You need real hashboards attached for (a much shorter list, attended-only):**
+
+- **Thermal and fan behavior**: fan-curve control, temperature-sensor readings,
+  missing-fan/over-temp faults, throttling. A bare board has no fans or hashboard temp
+  sensors to exercise, and firmware behaves differently without them.
+- **Hashboard-side RE**: the control-board↔hashboard link protocol, hashboard EEPROMs
+  (I2C), and the firmware on the hashboards' own micros. None of that exists on a bench
+  of bare boards.
+- **Anything that only manifests under load**: watchdog resets while hashing, memory/CPU
+  pressure during active mining, race conditions that need the mining pipeline hot.
+- **Measured-performance and fee/skim verification**: hashrate reporting vs. actual
+  work submitted, frequency/voltage/power-mode behavior, hidden-fee skimming analysis
+  against a controlled pool. A bare board subscribes to the pool but submits no shares —
+  measuring *shares* requires hashing.
+- **Tests that need the miner to "boot happy"**: some firmware refuses to fully start
+  the mining pipeline (or error-spams) without hashboards present. If your test needs a
+  normally-running miner rather than a normally-running control plane, it's a full-miner
+  test.
+
+We run both: bare boards for breadth, a few full miners for thermal/load/skimming work,
+with the full-miner PSU feeds on Shelly channels (§2).
 
 ### 5.5 Bench kit (for when software access ends)
 
